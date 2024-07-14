@@ -53,6 +53,7 @@ Should work fine with all POSIX compliant shells (and some of the not fully comp
 
 - [ ] Add support for detailed configuration per inventory item.
 - [ ] Add support for a remote GET function for a secure way to disable/sefl-destruct the daemon instance.
+- [ ] Add support for strict host key checking.
 
 ## 📜 License
 
