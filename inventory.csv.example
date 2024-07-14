@@ -1,0 +1,2 @@
+ip,user,password,port,key
+192.168.1.1,username,password,22,/path/to/keyfile
