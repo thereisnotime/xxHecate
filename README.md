@@ -38,6 +38,8 @@ cd $HOME/.xxHecate && cp .env.example .env && cp inventory.csv.example inventory
 
 TODO
 
+You can find a guide on how to enable full disk encryption with LUKS and allow unlock via SSH [here](./guides/setup-dropbear-ssh.md).
+
 ## 📚 Usage
 
 TODO
