@@ -43,6 +43,8 @@ nano /etc/initramfs-tools/modules
 # mac80211
 # iwlwifi
 # cfg80211
+# NOTE: Now edit the Wi-Fi script to accomodate your interface name. Comment out INTERFACE= and add INTERFACE=wlp0s20f3
+nano initramfs-tools/scripts/init-premount/01-enable-wireless
 bash install.sh
 sudo update-initramfs -u -k all
 # NOTE: Now you can reboot.
