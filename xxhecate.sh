@@ -4,7 +4,7 @@
 # TODO: Add execution of the cryptsetup-unlock script on the remote host.
 # NOTE: Editing the inventory does not need a restart, the script will pick up the changes in the next iteration.
 # NOTE: Editing the .env file will not take effect until the script is restarted.
-_SCRIPT_VERSION="0.1.1"
+_SCRIPT_VERSION="0.2.0"
 _SCRIPT_NAME="xxHecate"
 
 #####################################
