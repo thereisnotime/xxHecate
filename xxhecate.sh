@@ -82,6 +82,19 @@ function log() {
     esac
 }
 
+function check_requirements() {
+    for tool in "$@"; 
+    do
+        if ! command -v "$tool" &> /dev/null; 
+        then
+            log "Pre-requisite '$tool' was not found on your system." "ERROR"
+            exit 1
+        else
+            log "Pre-requisite '$tool' found." "DEBUG"
+        fi
+    done
+}
+
 function load_env_file() {
     local _count=0
     log "Loading environment variables from the .env file." "INFO"
@@ -181,4 +194,5 @@ function main() {
 
 log "Starting $_SCRIPT_NAME $_SCRIPT_VERSION" "INFO"
 load_env_file
+check_requirements "nc" "ssh"
 main
