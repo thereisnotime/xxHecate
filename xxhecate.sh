@@ -1,10 +1,10 @@
 #!/bin/bash
-#shellcheck disable=SC2002,SC1091
+#shellcheck disable=SC2002,SC1091,SC2034
 # TODO: Finish CSV validation and add IP TCP connection check, port validation, key file existence and permissions validation.
 # TODO: Add execution of the cryptsetup-unlock script on the remote host.
 # NOTE: Editing the inventory does not need a restart, the script will pick up the changes in the next iteration.
 # NOTE: Editing the .env file will not take effect until the script is restarted.
-_SCRIPT_VERSION="0.1.0"
+_SCRIPT_VERSION="0.1.1"
 _SCRIPT_NAME="xxHecate"
 
 #####################################
@@ -14,12 +14,12 @@ XXHECATE_INVENTORY="${XXHECATE_INVENTORY:-inventory.csv}"
 XXHECATE_LOG_FILE="${XXHECATE_LOG_FILE:-xxHecate.log}"
 XXHECATE_SLEEP_DURATION="${XXHECATE_SLEEP_DURATION:-60}"
 # TODO: Remove this after testing is done.
-REMOTE_COMMAND="whois"
 
 #####################################
 #### Constants
 #####################################
-XXHECATE_DEBUG_FLAG="${XXHECATE_DEBUG_FLAG:-$(basename "${0^^}")_DEBUG_MODE}"
+XXHECATE_DEBUG_FLAG="${_SCRIPT_NAME}_DEBUG_MODE"
+XXHECATE_DEBUG_FLAG=$(echo "$XXHECATE_DEBUG_FLAG" | tr '[:lower:]' '[:upper:]')
 XXHECATE_DEBUG_MODE=$(if [[ -f $XXHECATE_DEBUG_FLAG ]]; then echo 1; else echo 0; fi)
 
 #####################################
@@ -83,12 +83,12 @@ function log() {
 }
 
 function load_env_file() {
-  local _count=0
+    local _count=0
+    log "Loading environment variables from the .env file." "INFO"
     if [ -f .env ]; then
         set -o allexport
         source .env
         set +o allexport
-        # count number of variables loaded
         while IFS= read -r _; do
             ((_count++))
         done < .env
@@ -98,79 +98,87 @@ function load_env_file() {
     fi
 }
 
-function validate_and_load_csv() {
-  local csv_file="$1"
-  local valid=true
-  local count=0
-
-  log "Starting validation and loading of Inventory CSV file $csv_file" "DEBUG"
-
-  if [ ! -f "$csv_file" ]; then
-    log "Inventory CSV file $csv_file not found." "ERROR"
-    return 1
-  fi
-
-  if [ ! -s "$csv_file" ]; then
-    log "Inventory CSV file $csv_file is empty." "ERROR"
-    return 1
-  fi
-
-  while IFS=, read -r ip user password port key; do
-    if [[ -z "$ip" || -z "$user" || -z "$password" || -z "$port" || -z "$key" ]]; then
-      log "Invalid CSV entry found. One or more fields are missing." "ERROR"
-      valid=false
-      break
+function check_host_reachability_and_port() {
+    local _host=$1
+    local _port=$2
+    local _timeout=5
+    local _result
+    log "Checking host $_host reachability and port $_port." "DEBUG"
+    _result=$( nc -zv "$_host" "$_port" -w $_timeout 2>&1 )
+    if [[ $_result == *"No route"* ]]; then
+        log "Port $_port is not open on host (no route) $_host." "WARN"
+        return 1
+    elif [[ $_result == *"refused"* ]]; then 
+        log "Port $_port is open on host (refused) $_host." "DEBUG"
+        return 0
+    elif [[ $_result == *"succeeded"* ]]; then
+        log "Port $_port is open on host (succeeded) $_host." "DEBUG"
+        return 0
+    else
+        log "Port $_port is not open on host (other) $_host." "WARN"
+        return 1
     fi
-    ((count++))
-  done < "$csv_file"
-
-  if [ "$valid" = false ]; then
-    log "Inventory file $csv_file contains invalid data." "ERROR"
-    return 1
-  fi
-
-  log "Inventory file $csv_file is valid and contains $count hosts." "INFO"
-  cat "$csv_file"
 }
 
-function execute_ssh_command() {
-  local ip="$1"
-  local user="$2"
-  local password="$3"
-  local port="$4"
-  local key="$5"
-
-  log "Executing command on $user@$ip:$port" "DEBUG"
-
-  ssh -o ConnectTimeout=10 -i "$key" -p "$port" "$user@$ip" "$REMOTE_COMMAND" 2>/dev/null
-  local ssh_status=$?
-
-  if [ $ssh_status -eq 0 ]; then
-    log "Successfully executed command on $user@$ip:$port" "INFO"
-  else
-    log "Failed to connect to $user@$ip:$port, skipping..." "WARN"
-  fi
+function check_key_file() {
+    local _keyfile=$1
+    local _perms
+    local first_digit
+    log "Checking key file existance $_keyfile." "DEBUG"
+    if [ ! -f "$_keyfile" ]; then
+        log "Key file $_keyfile does not exist." "WARN"
+        return 1
+    fi
+    # TODO: Implemenet proper permissions check.
+    perms=$(stat -c %a "$_keyfile")
+    first_digit=${perms:0:1}
+    log "Key file $_keyfile has permissions: $perms." "DEBUG"
+    if [[ "$first_digit" != "4" && "$first_digit" != "6" ]]; then
+        log "Key file $_keyfile does not have correct owner permissions (expected 4 or 6 as the first digit)." "WARN"
+        return 1
+    fi
+    return 0
 }
 
-function main_loop() {
-    while true; do
-        while IFS=, read -r ip user password port key; do
-            if [ -z "$ip" ]; then
-                log "No valid CSV ($XXHECATE_INVENTORY) or empty file found, exiting..." "ERROR"
-                exit 1
+function execute_remote_command() {
+    local _host=$1
+    local _user=$2
+    local _password=$3
+    local _port=$4
+    local _keyfile=$5
+    local _ssh_parameters
+    local _ssh_cmd
+    # TODO: Add checks if unlock is successful or not.
+    _ssh_parameters="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    _command="printf %s $_password | cryptroot-unlock"
+    log "Executing remote command on $_host:$_port." "DEBUG"
+    # shellcheck disable=SC2206
+    ssh_cmd=(ssh -n "${_user}@${_host}" -i "$_keyfile" -p "$_port" $_ssh_parameters)
+    "${ssh_cmd[@]}" "$_command"
+}
+
+function main() {
+    while IFS=, read -r _host _user _password _port _keyfile || [ -n "$_host" ]; do
+        # TODO: Remove this insecure eval and replace with a proper expansion.
+        _keyfile=$(eval echo "$_keyfile")
+        if [ -z "$_host" ]; then
+            log "Encountered an empty line or end of file." "DEBUG"
+            continue  # Skip processing if the line is empty
+        fi
+        log "Processing host: $_host" "INFO"
+        if check_host_reachability_and_port "$_host" "$_port"; then
+            if check_key_file "$_keyfile"; then
+                log "All checks passed for $_host. Executing unlock command" "INFO"
+                execute_remote_command "$_host" "$_user" "$_password" "$_port" "$_keyfile"
+            else
+                log "Key file issues for $_host. Skipping..." "WARN"
             fi
-            # execute_ssh_command "$ip" "$user" "$password" "$port" "$key"
-            log "Executing command on $user@$ip:$port" "DEBUG"
-            sleep "$XXHECATE_SLEEP_DURATION"
-        done < <(validate_and_load_csv "$XXHECATE_INVENTORY")
-        
-        sleep "$XXHECATE_SLEEP_DURATION"
-    done
+        else
+            log "Host $_host is not reachable. Skipping to next host..." "DEBUG"
+        fi
+    done < <(tail -n +2 "$XXHECATE_INVENTORY"; echo)
 }
 
-#####################################
-#### Main
-#####################################
 log "Starting $_SCRIPT_NAME $_SCRIPT_VERSION" "INFO"
 load_env_file
-main_loop
+main

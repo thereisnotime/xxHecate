@@ -6,6 +6,7 @@
 
 # Debug
 *_DEBUG_MODE
+*_DEBUG_MODE.off
 
 # Secret
 .env
