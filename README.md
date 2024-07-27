@@ -1,6 +1,6 @@
 # xxHecate
 
-A small tool to unlock your fully encrypted disks (LUKS) SSH remotely.
+A small tool to unlock your devices with fully encrypted disks (LUKS) SSH remotely.
 
 ## ✨ Description
 
