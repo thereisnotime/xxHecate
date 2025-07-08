@@ -4,14 +4,15 @@
 # TODO: Add execution of the cryptsetup-unlock script on the remote host.
 # NOTE: Editing the inventory does not need a restart, the script will pick up the changes in the next iteration.
 # NOTE: Editing the .env file will not take effect until the script is restarted.
-_SCRIPT_VERSION="0.2.0"
+_SCRIPT_VERSION="0.2.1"
 _SCRIPT_NAME="xxHecate"
 
 #####################################
 #### Configuration
 #####################################
-XXHECATE_INVENTORY="${XXHECATE_INVENTORY:-inventory.csv}"
-XXHECATE_LOG_FILE="${XXHECATE_LOG_FILE:-xxHecate.log}"
+XXHECATE_SCRIPT_DIRECTORY="$(dirname "$(readlink -f "$0")")"
+XXHECATE_INVENTORY="${XXHECATE_INVENTORY:-${XXHECATE_SCRIPT_DIRECTORY}/inventory.csv}"
+XXHECATE_LOG_FILE="${XXHECATE_LOG_FILE:-${XXHECATE_SCRIPT_DIRECTORY}/xxHecate.log}"
 XXHECATE_SLEEP_DURATION="${XXHECATE_SLEEP_DURATION:-60}"
 # TODO: Remove this after testing is done.
 
@@ -25,6 +26,7 @@ XXHECATE_DEBUG_MODE=$(if [[ -f $XXHECATE_DEBUG_FLAG ]]; then echo 1; else echo 0
 #####################################
 #### Helpers
 #####################################
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
 fblack='\e[0;30m'        # Black
 fred='\e[0;31m'          # Red
 fgreen='\e[0;32m'        # Green
