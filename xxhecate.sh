@@ -236,9 +236,19 @@ function execute_remote_command() {
     _rc=$?
     if [ "$_rc" -eq 0 ]; then
         log "LUKS unlock on $_host returned success." "INFO"
-    else
-        log "LUKS unlock on $_host failed (rc=$_rc): $_result" "ERROR"
+        return 0
     fi
+    # A refused or immediately closed connection on the unlock port means the
+    # initramfs SSH server is not listening, which is the normal state once a
+    # host has finished booting - there is nothing to unlock. Logging that at
+    # ERROR every pass would bury real failures, so it is reported as INFO.
+    case "$_result" in
+    *"Connection refused"* | *"Connection closed by"* | *"Connection reset by"*)
+        log "Nothing to unlock on $_host: the unlock port is not listening (host already booted)." "INFO"
+        return 0
+        ;;
+    esac
+    log "LUKS unlock on $_host failed (rc=$_rc): $_result" "ERROR"
     return "$_rc"
 }
 
