@@ -28,7 +28,8 @@ TODO - Add a demo here.
   - [👎 Cons](#-cons)
   - [🔩 Technical Details](#-technical-details)
   - [🔓 Unlock methods](#-unlock-methods)
-    - [TrueNAS / ZFS notes](#truenas--zfs-notes)
+    - [Plain OpenZFS notes (`zfs`)](#plain-openzfs-notes-zfs)
+    - [TrueNAS / ZFS notes (`truenas-zfs`)](#truenas--zfs-notes-truenas-zfs)
   - [⚙️ Configuration](#️-configuration)
   - [🔐 Security](#-security)
   - [🛠️ Installation](#️-installation)
@@ -73,7 +74,8 @@ The `method` column selects how a host is unlocked. It is optional: an empty val
 | `method` | `target` | What it does |
 | --- | --- | --- |
 | `luks` (default), `cryptroot` | ignored | SSH into the initramfs shell (dropbear or similar) and pipe the passphrase into `cryptroot-unlock`. |
-| `truenas-zfs`, `truenas`, `zfs` | encryption root, default `tank` | SSH into a running TrueNAS and unlock the ZFS dataset tree through the middleware. |
+| `truenas-zfs`, `truenas` | encryption root, e.g. `tank` | SSH into a running TrueNAS and unlock the ZFS dataset tree through the middleware API. |
+| `zfs`, `zfs-native`, `openzfs` | encryption root, e.g. `zpool1` | SSH into a plain OpenZFS host (no TrueNAS middleware) and run `zfs load-key` + `zfs mount -a`. |
 
 Inventory format:
 
@@ -81,9 +83,20 @@ Inventory format:
 host,user,password,port,key,method,target
 192.168.1.2,root,luks-passphrase,22,/path/to/keyfile,luks,
 192.168.1.3,root,zfs-passphrase,22,/path/to/keyfile,truenas-zfs,tank
+192.168.1.4,root,zfs-passphrase,22,/path/to/keyfile,zfs,zpool1
 ```
 
-### TrueNAS / ZFS notes
+Pick `truenas-zfs` for a TrueNAS appliance and `zfs` for any other OpenZFS host. They are not interchangeable: the TrueNAS method talks to the middleware API, which a plain Debian/Ubuntu ZFS box does not have.
+
+### Plain OpenZFS notes (`zfs`)
+
+- Set `target` to the encryption root (the dataset that owns the key). Children inherit it, so one row covers the tree.
+- **Both key locations are handled automatically.** With `keyformat=passphrase` and `keylocation=prompt`, the passphrase from the inventory is piped to `zfs load-key` on stdin. With `keylocation=file://...`, `zfs load-key` reads that file and ignores stdin, so the inventory passphrase is unused and may be a placeholder.
+- Check which one you have with `zfs get keyformat,keylocation <dataset>`. A file keylocation means the host already unlocks itself at boot and probably does not need xxHecate at all.
+- `sudo -n` is used automatically when the SSH user is not root, so that user needs passwordless sudo for `zfs`.
+- Verify a key without loading it using `zfs load-key -n <dataset>`.
+
+### TrueNAS / ZFS notes (`truenas-zfs`)
 
 - **Only the encryption root needs a passphrase.** Every child dataset inherits its key from the root (`encryptionroot` points at it), so one recursive unlock covers the whole tree. Listing each child with the passphrase repeated is unnecessary. Check yours with `zfs get -r -o name,value encryptionroot <pool>` — if every encrypted dataset reports the same root, a single row is enough.
 - **The passphrase is passed on stdin, never in argv**, so it does not appear in the process list on the client or on the NAS.

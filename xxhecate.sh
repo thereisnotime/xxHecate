@@ -335,6 +335,75 @@ sys.exit(0 if ok else 1)
     return "$_rc"
 }
 
+function unlock_zfs_native() {
+    local _host=$1
+    local _user=$2
+    local _password=$3
+    local _port=$4
+    local _keyfile=$5
+    local _dataset=$6
+    local _ssh_parameters
+    local _remote_sh
+    local _result
+    local _rc
+
+    if [ -z "$_dataset" ]; then
+        log "No target dataset set for $_host; the zfs method needs one (e.g. zpool1)." "ERROR"
+        return 1
+    fi
+
+    _ssh_parameters=$(ssh_parameters_for booted)
+    if [ -z "$XXHECATE_KNOWN_HOSTS" ]; then
+        log "XXHECATE_KNOWN_HOSTS is unset; connecting to $_host without host-key verification." "WARN"
+    fi
+
+    # Unlocks a dataset on a plain OpenZFS host (not TrueNAS: no middleware).
+    #
+    # Handles both key locations. With keyformat=passphrase and
+    # keylocation=prompt, zfs load-key reads the passphrase from stdin, which is
+    # the SSH channel. With keylocation=file://..., zfs load-key reads that file
+    # and ignores stdin entirely, so no passphrase is needed and the inventory
+    # value is unused. Checking keystatus first makes it a no-op when the
+    # dataset is already unlocked, so it is safe on a timer.
+    #
+    # Single quotes are deliberate: the $ expansions below must be evaluated by
+    # the remote shell, not by this one.
+    # shellcheck disable=SC2016
+    _remote_sh='
+DS="$1"
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then SUDO="sudo -n"; fi
+KS=$($SUDO zfs get -H -o value keystatus "$DS" 2>/dev/null)
+if [ -z "$KS" ] || [ "$KS" = "-" ]; then
+    echo "status=not-encrypted dataset=$DS"
+    exit 0
+fi
+if [ "$KS" = "available" ]; then
+    echo "status=already-unlocked dataset=$DS"
+    exit 0
+fi
+KL=$($SUDO zfs get -H -o value keylocation "$DS" 2>/dev/null)
+if [ "$KL" = "prompt" ]; then
+    $SUDO zfs load-key "$DS" || exit 1
+else
+    $SUDO zfs load-key "$DS" < /dev/null || exit 1
+fi
+$SUDO zfs mount -a 2>/dev/null
+echo "status=unlocked dataset=$DS keylocation=$KL mounted=$($SUDO zfs get -H -o value mounted "$DS")"
+'
+    log "Unlocking ZFS dataset '$_dataset' on $_host:$_port." "DEBUG"
+    # shellcheck disable=SC2086
+    _result=$(printf '%s' "$_password" | ssh "${_user}@${_host}" -i "$_keyfile" -p "$_port" \
+        $_ssh_parameters "sh -c '$_remote_sh' _ '$_dataset'" 2>&1)
+    _rc=$?
+    if [ "$_rc" -eq 0 ]; then
+        log "ZFS unlock on $_host succeeded: $_result" "INFO"
+    else
+        log "ZFS unlock on $_host failed (rc=$_rc): $_result" "ERROR"
+    fi
+    return "$_rc"
+}
+
 function main() {
     while IFS=, read -r _host _user _password _port _keyfile _method _target || [ -n "$_host" ]; do
         # Expand a leading ~ and $HOME/${HOME} without eval. The old
@@ -361,8 +430,11 @@ function main() {
                 "" | luks | cryptroot)
                     execute_remote_command "$_host" "$_user" "$_password" "$_port" "$_keyfile"
                     ;;
-                truenas-zfs | truenas | zfs)
+                truenas-zfs | truenas)
                     unlock_truenas_zfs "$_host" "$_user" "$_password" "$_port" "$_keyfile" "$_target"
+                    ;;
+                zfs | zfs-native | openzfs)
+                    unlock_zfs_native "$_host" "$_user" "$_password" "$_port" "$_keyfile" "$_target"
                     ;;
                 *)
                     log "Unknown unlock method '$_method' for $_host. Skipping..." "ERROR"

@@ -2,3 +2,4 @@ host,user,password,port,key,method,target
 192.168.1.1,username,password,22,/path/to/keyfile,,
 192.168.1.2,root,luks-passphrase,22,/path/to/keyfile,luks,
 192.168.1.3,root,zfs-passphrase,22,/path/to/keyfile,truenas-zfs,tank
+192.168.1.4,root,zfs-passphrase,22,/path/to/keyfile,zfs,zpool1
